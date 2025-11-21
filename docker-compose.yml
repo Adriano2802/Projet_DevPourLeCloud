@@ -1,11 +1,12 @@
 services:
   localstack:
-    image: localstack/localstack:1.4
+    image: localstack/localstack:latest
     container_name: localstack
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3,dynamodb
+      - SERVICES=s3,dynamodb,sqs,lambda
+      - DEBUG=1
       - DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
