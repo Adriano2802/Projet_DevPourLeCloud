@@ -8,6 +8,8 @@ import {
     GetObjectCommand
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getUser, createUser } from "./db.js";
+
 
 // ---------------- CONFIG ----------------
 
@@ -117,6 +119,33 @@ app.get("/view/:name", async (req, res) => {
 
     data.Body.pipe(res);
 });
+
+app.post("/register", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+    const existingUser = await getUser(email);
+    if (existingUser) return res.status(400).json({ error: "User already exists" });
+
+    await createUser({ email, password });
+    res.json({ message: "User created" });
+});
+
+app.post("/login", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+    const user = await getUser(email);
+    if (!user || user.password !== password) {
+        return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Génère un token JWT
+    const token = jwt.sign({ user: email }, "MY_SECRET", { expiresIn: "1h" });
+    res.json({ token });
+});
+
+
 
 // ---------------- START SERVER ----------------
 
