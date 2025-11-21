@@ -1,0 +1,62 @@
+# =========================================
+# Node / Backend
+# =========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# Logs
+logs/
+*.log
+*.out
+*.err
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# =========================================
+# Terraform / OpenTofu
+# =========================================
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Localstack temp data
+localstack/
+localstack-data/
+tmp/
+
+# =========================================
+# OS / Editor
+# =========================================
+.DS_Store
+Thumbs.db
+
+# JetBrains
+.idea/
+
+# VSCode
+.vscode/
+.history/
+
+# =========================================
+# Build / Output
+# =========================================
+dist/
+build/
+
+# =========================================
+# Misc
+# =========================================
+*.tmp
+*.bak
+
+# =========================================
+# VSCode
+# =========================================
+.vscode/
