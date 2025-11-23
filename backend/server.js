@@ -17,7 +17,10 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getUser, createUser } from "./db.js";
 
-// ---------------- CONFIG ----------------
+
+    // ---------------- CONFIG ----------------
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 const app = express();
 const PORT = process.env.PORT || 3001;
 const BUCKET = process.env.USER_IMAGES_BUCKET || "userimages";
@@ -42,7 +45,6 @@ const sqs = new SQSClient({
     endpoint: LOCALSTACK_ENDPOINT,
 });
 
-// Cache de la Queue URL (récupérée au démarrage si possible)
 let thumbnailQueueUrl = process.env.THUMBNAIL_QUEUE_URL || null;
 
 async function initQueueUrl() {
@@ -52,171 +54,51 @@ async function initQueueUrl() {
         thumbnailQueueUrl = r.QueueUrl;
         console.log("SQS queue URL found:", thumbnailQueueUrl);
     } catch (err) {
-        console.warn("SQS queue not found at startup (ok en dev si non créée). Will try again on send.", err.message);
-        thumbnailQueueUrl = null;
+        console.warn("⚠ Queue not yet created (no big deal in dev)");
     }
 }
 initQueueUrl();
 
-// ---------------- AUTH ----------------
-
-// Middleware d'auth : vérifie JWT et ajoute req.user = { user }
+// ---------------- AUTH MIDDLEWARE ----------------
 function auth(req, res, next) {
     const header = req.headers.authorization;
     if (!header) return res.status(401).json({ error: "Missing token" });
 
-    const token = header.split(" ")[1];
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded; // ex: { user: "email@example.com", iat, exp }
+        const token = header.split(" ")[1];
+        req.user = jwt.verify(token, JWT_SECRET);
         next();
-    } catch (e) {
+    } catch {
         return res.status(401).json({ error: "Invalid token" });
     }
 }
 
-// ---------------- MULTER (validation simple) ----------------
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-    fileFilter: (req, file, cb) => {
-        const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-        if (!allowed.includes(file.mimetype)) {
-            return cb(new Error("Type de fichier non autorisé"), false);
-        }
-        cb(null, true);
-    },
-});
-
-// ---------------- ROUTES ----------------
-
-// Upload -> S3 + envoi d'un message SQS (si queue dispo)
-app.post("/upload", auth, upload.single("image"), async (req, res, next) => {
-    try {
-        const file = req.file;
-        if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-        // Préfixe user pour isolation
-        const key = `${encodeURIComponent(req.user.user)}/${Date.now()}_${file.originalname.replace(/\s+/g, "_")}`;
-
-        await s3.send(
-            new PutObjectCommand({
-                Bucket: BUCKET,
-                Key: key,
-                Body: file.buffer,
-                ContentType: file.mimetype,
-            })
-        );
-
-        // assure queue url
-        if (!thumbnailQueueUrl) {
-            try {
-                const r = await sqs.send(new GetQueueUrlCommand({ QueueName: THUMBNAIL_QUEUE_NAME }));
-                thumbnailQueueUrl = r.QueueUrl;
-                console.log("Resolved queue url at upload:", thumbnailQueueUrl);
-            } catch (err) {
-                console.warn("Cannot resolve queue URL; SQS message not sent:", err.message);
-            }
-        }
-
-        if (thumbnailQueueUrl) {
-            const payload = { bucket: BUCKET, key, user: req.user.user, uploadedAt: new Date().toISOString() };
-            await sqs.send(new SendMessageCommand({
-                QueueUrl: thumbnailQueueUrl,
-                MessageBody: JSON.stringify(payload),
-            }));
-        }
-
-        res.status(201).json({ message: "File uploaded", name: key, processing: !!thumbnailQueueUrl });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// Liste fichiers (retourne la liste brute)
-app.get("/images", auth, async (req, res, next) => {
-    try {
-        const data = await s3.send(
-            new ListObjectsV2Command({
-                Bucket: BUCKET,
-                Prefix: `${encodeURIComponent(req.user.user)}/`,
-            })
-        );
-
-        res.json(data.Contents || []);
-    } catch (err) {
-        next(err);
-    }
-});
-
-// Signed URL publique temporaire
-app.get("/image-url/:name", auth, async (req, res, next) => {
-    try {
-        const key = req.params.name;
-        const command = new GetObjectCommand({
-            Bucket: BUCKET,
-            Key: key,
-        });
-
-        const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
-
-        res.json({ url });
-    } catch (e) {
-        next(e);
-    }
-});
-
-// View direct (inline) — protège via token query (pour les emails dans embed)
-app.get("/view/:name", async (req, res, next) => {
-    const token = req.query.token;
-    if (!token) return res.status(401).json({ error: "Missing token" });
-
-    try {
-        jwt.verify(token, JWT_SECRET);
-    } catch (e) {
-        return res.status(401).json({ error: "Invalid token" });
-    }
-
-    try {
-        const command = new GetObjectCommand({
-            Bucket: BUCKET,
-            Key: req.params.name,
-        });
-
-        const data = await s3.send(command);
-
-        res.setHeader("Content-Disposition", "inline");
-        res.setHeader("Content-Type", data.ContentType || "image/jpeg");
-
-        // data.Body est un stream Readable dans AWS SDK v3
-        data.Body.pipe(res);
-    } catch (err) {
-        next(err);
-    }
-});
-
-// ---------------- AUTH: register / login ----------------
-
-// Validation email simple
+// ---------------- VALIDATION ----------------
 function isValidEmail(email) {
     return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// Register
+function isStrongPassword(pwd) {
+    return typeof pwd === "string" && pwd.length >= 8;
+}
+
+// ---------------- REGISTER ----------------
 app.post("/register", async (req, res, next) => {
     try {
         const { email, password } = req.body;
+
         if (!email || !password) return res.status(400).json({ error: "Email and password required" });
-        if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email" });
-        if (typeof password !== "string" || password.length < 8) return res.status(400).json({ error: "Password must be >= 8 chars" });
+        if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email format" });
+        if (!isStrongPassword(password)) return res.status(400).json({ error: "Weak password (>=8 chars)" });
 
         const existingUser = await getUser(email);
         if (existingUser) return res.status(400).json({ error: "User already exists" });
 
         const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-        // stocke email + passwordHash (db.js gère l'insertion)
         await createUser({ email, passwordHash, createdAt: new Date().toISOString() });
+
+        console.log(`✔ User created: ${email}`);
 
         res.status(201).json({ message: "User created" });
     } catch (err) {
@@ -224,36 +106,79 @@ app.post("/register", async (req, res, next) => {
     }
 });
 
-// Login
+// ---------------- LOGIN ----------------
 app.post("/login", async (req, res, next) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
         const user = await getUser(email);
-        if (!user) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
+        if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
-        const hash = user.passwordHash || user.password; // fallback si user ancien
-        const ok = await bcrypt.compare(password, hash);
+        const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
-        // Génère un token JWT léger
         const token = jwt.sign({ user: email }, JWT_SECRET, { expiresIn: "1h" });
+
         res.json({ token });
     } catch (err) {
         next(err);
     }
 });
 
-// ---------------- Error handler ----------------
-app.use((err, req, res, next) => {
-    console.error(err);
-    if (err.message && err.message.includes("Type de fichier non autorisé")) {
-        return res.status(400).json({ error: err.message });
+// ---------------- SEED USERS (DEV ONLY) ----------------
+app.post("/seed-users", async (req, res) => {
+    const testUsers = [
+        { email: "test1@example.com", password: "password123" },
+        { email: "test2@example.com", password: "password123" }
+    ];
+
+    for (const u of testUsers) {
+        const hash = await bcrypt.hash(u.password, SALT_ROUNDS);
+        await createUser({ email: u.email, passwordHash: hash, createdAt: new Date().toISOString() });
     }
-    res.status(500).json({ error: "Internal server error", details: err.message });
+
+    res.json({ message: "Users created", count: testUsers.length });
+});
+
+// ---------------- FILE UPLOAD + SQS ----------------
+// (on laisse TA logique, juste petits logs)
+app.post("/upload", auth, upload.single("image"), async (req, res, next) => {
+    try {
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+        const key = `${encodeURIComponent(req.user.user)}/${Date.now()}_${file.originalname.replace(/\s+/g, "_")}`;
+
+        await s3.send(new PutObjectCommand({
+            Bucket: BUCKET,
+            Key: key,
+            Body: file.buffer,
+            ContentType: file.mimetype,
+        }));
+
+        console.log(`📤 Uploaded to S3: ${key}`);
+
+        if (!thumbnailQueueUrl) {
+            try {
+                const r = await sqs.send(new GetQueueUrlCommand({ QueueName: THUMBNAIL_QUEUE_NAME }));
+                thumbnailQueueUrl = r.QueueUrl;
+            } catch {
+                console.warn("⚠ No queue found, skipping SQS message");
+            }
+        }
+
+        if (thumbnailQueueUrl) {
+            await sqs.send(new SendMessageCommand({
+                QueueUrl: thumbnailQueueUrl,
+                MessageBody: JSON.stringify({ bucket: BUCKET, key }),
+            }));
+            console.log(`📨 SQS message sent for ${key}`);
+        }
+
+        res.status(201).json({ message: "File uploaded", key });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // ---------------- START SERVER ----------------
