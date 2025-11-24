@@ -70,3 +70,76 @@ output "thumbnail_queue_arn" {
   value = aws_sqs_queue.thumbnail_queue.arn
 }
 
+# --------------------------------------
+# Lambda : Thumbnail Generator
+# --------------------------------------
+resource "aws_lambda_function" "thumbnail_function" {
+  function_name = "thumbnail-function"
+  role          = "arn:aws:iam::000000000000:role/lambda-role" # Fake IAM ARN pour LocalStack
+
+  handler = "lambda.handler"
+  runtime = "nodejs18.x"
+
+  filename         = "${path.module}/lambda.zip"
+  source_code_hash = filebase64sha256("${path.module}/lambda.zip")
+
+  environment {
+    variables = {
+      BUCKET = aws_s3_bucket.images.bucket
+    }
+  }
+}
+
+# --------------------------------------
+# API Gateway REST API
+# --------------------------------------
+resource "aws_api_gateway_rest_api" "thumbnail_api" {
+  name = "thumbnail-api"
+}
+
+# La ressource /thumbnail
+resource "aws_api_gateway_resource" "thumbnail" {
+  rest_api_id = aws_api_gateway_rest_api.thumbnail_api.id
+  parent_id   = aws_api_gateway_rest_api.thumbnail_api.root_resource_id
+  path_part   = "thumbnail"
+}
+
+# Méthode GET sur /thumbnail
+resource "aws_api_gateway_method" "get_thumbnail" {
+  rest_api_id   = aws_api_gateway_rest_api.thumbnail_api.id
+  resource_id   = aws_api_gateway_resource.thumbnail.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+# Intégration GET → Lambda
+resource "aws_api_gateway_integration" "thumbnail_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.thumbnail_api.id
+  resource_id             = aws_api_gateway_resource.thumbnail.id
+  http_method             = aws_api_gateway_method.get_thumbnail.http_method
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = aws_lambda_function.thumbnail_function.invoke_arn
+}
+
+# Déploiement
+resource "aws_api_gateway_deployment" "thumbnail_deployment" {
+  depends_on = [aws_api_gateway_integration.thumbnail_integration]
+  rest_api_id = aws_api_gateway_rest_api.thumbnail_api.id
+  stage_name  = "dev"
+}
+
+# Permission API Gateway → Lambda
+resource "aws_lambda_permission" "apigw_permission" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.thumbnail_function.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.thumbnail_api.execution_arn}/*/*"
+}
+
+# Output URL
+output "api_url" {
+  value = "${aws_api_gateway_deployment.thumbnail_deployment.invoke_url}/thumbnail"
+}
+
