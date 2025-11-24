@@ -16,9 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const showRegisterBtn = document.getElementById("show-register");
     const showLoginBtn = document.getElementById("show-login");
 
-
     const API = "http://localhost:3001";
 
+    // --- TOGGLE FORMS ---
     showRegisterBtn.addEventListener("click", () => {
         registerForm.classList.remove("hidden");
         loginForm.classList.add("hidden");
@@ -44,6 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
         imagesList.innerHTML = "";
     }
 
+    // --- LOAD IMAGES ---
     async function loadImages() {
         imagesList.innerHTML = "";
         const token = localStorage.getItem("token");
@@ -61,13 +62,25 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             const { url } = await urlRes.json();
 
+            // --- IMAGE CARD ---
+            const card = document.createElement("div");
+            card.className = "img-card";
+
             const img = document.createElement("img");
             img.src = url;
             img.alt = key;
-            imagesList.appendChild(img);
+
+            const name = document.createElement("p");
+            name.className = "img-name";
+            name.textContent = key;
+
+            card.appendChild(img);
+            card.appendChild(name);
+            imagesList.appendChild(card);
         }
     }
 
+    // --- REGISTER ---
     registerForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const formData = new FormData(registerForm);
@@ -83,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
         alert(data.message || data.error);
     });
 
+    // --- LOGIN ---
     loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const formData = new FormData(loginForm);
@@ -105,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // --- UPLOAD ---
     uploadBtn.addEventListener("click", async () => {
         const file = fileInput.files[0];
         if (!file) return alert("Choisis un fichier !");
