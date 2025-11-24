@@ -10,7 +10,7 @@ docker compose logs -f localstack
 tofu init
 tofu apply -auto-approve
 
-aws --endpoint-url=http://localhost:4566 s3 ls 
+awslocal dynamodb list-tables
 
 lancer server node :
 node server.js
