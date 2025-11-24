@@ -16,6 +16,11 @@ import {
 } from "@aws-sdk/client-sqs";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getUser, createUser } from "./db.js";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+
+
 
 
     // ---------------- CONFIG ----------------
@@ -32,6 +37,15 @@ const SALT_ROUNDS = 10;
 
 // Middleware JSON
 app.use(express.json());
+
+// enable CORS (dev)
+app.use(cors());
+
+// servir les fichiers statiques du front (optionnel, pratique)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(path.resolve(__dirname, "../frontend")));
+
 
 // ---------------- S3 & SQS (LocalStack) ----------------
 const s3 = new S3Client({
@@ -176,6 +190,40 @@ app.post("/upload", auth, upload.single("image"), async (req, res, next) => {
         }
 
         res.status(201).json({ message: "File uploaded", key });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ---------------- LIST USER IMAGES ----------------
+app.get("/images", auth, async (req, res, next) => {
+    try {
+        const prefix = encodeURIComponent(req.user.user) + "/";
+
+        const objects = await s3.send(new ListObjectsV2Command({
+            Bucket: BUCKET,
+            Prefix: prefix
+        }));
+
+        res.json(objects.Contents || []);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ---------------- SIGNED URL FOR 1 IMAGE ----------------
+app.get("/image-url/:key", auth, async (req, res, next) => {
+    try {
+        const key = req.params.key;
+
+        const command = new GetObjectCommand({
+            Bucket: BUCKET,
+            Key: key,
+        });
+
+        const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+
+        res.json({ url });
     } catch (err) {
         next(err);
     }
