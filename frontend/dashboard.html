@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dashboard — Image Manager</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="dashboard">
+
+<main class="app">
+    <header>
+        <h1>Image Manager</h1>
+        <div id="user">
+            <span id="user-email"></span>
+            <button id="logout">Se déconnecter</button>
+        </div>
+    </header>
+
+    <section id="dashboard">
+        <div class="upload card">
+            <h2>Téléverser une image</h2>
+            <input id="file-input" type="file" accept="image/*" />
+            <button id="upload-btn">Téléverser</button>
+            <p id="upload-status" class="muted"></p>
+        </div>
+
+        <div class="images card">
+            <h2>Mes images</h2>
+            <div id="images-list" class="grid"></div>
+        </div>
+    </section>
+
+    <footer>
+        <small>Dev local — LocalStack / OpenTofu</small>
+    </footer>
+
+</main>
+
+<script src="app.js" type="module"></script>
+</body>
+</html>
