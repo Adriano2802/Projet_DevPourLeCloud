@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const authArea = document.getElementById("auth-area");
+    // --- DOM ELEMENTS ---
     const guestDiv = document.getElementById("guest");
     const userDiv = document.getElementById("user");
     const userEmailSpan = document.getElementById("user-email");
@@ -16,19 +16,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const showRegisterBtn = document.getElementById("show-register");
     const showLoginBtn = document.getElementById("show-login");
 
-    const API = "http://localhost:3001";
+    // --- BACKEND NODE.JS ---
+    const BACKEND = "http://localhost:3000";
 
     // --- TOGGLE FORMS ---
     showRegisterBtn.addEventListener("click", () => {
         registerForm.classList.remove("hidden");
         loginForm.classList.add("hidden");
     });
-
     showLoginBtn.addEventListener("click", () => {
         loginForm.classList.remove("hidden");
         registerForm.classList.add("hidden");
     });
 
+    // --- SHOW USER PANEL ---
     function showUser(email) {
         guestDiv.style.display = "none";
         userDiv.style.display = "block";
@@ -36,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
         dashboard.classList.remove("hidden");
     }
 
+    // --- LOGOUT ---
     function logout() {
         localStorage.removeItem("token");
         guestDiv.style.display = "block";
@@ -44,25 +46,24 @@ document.addEventListener("DOMContentLoaded", () => {
         imagesList.innerHTML = "";
     }
 
-    // --- LOAD IMAGES ---
+    // --- LOAD IMAGES FROM S3 VIA LAMBDAS ---
     async function loadImages() {
         imagesList.innerHTML = "";
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const res = await fetch(`${API}/images`, {
+        const res = await fetch(`${BACKEND}/images`, {
             headers: { Authorization: `Bearer ${token}` }
         });
         const images = await res.json();
 
         for (const obj of images) {
             const key = obj.Key;
-            const urlRes = await fetch(`${API}/image-url/${encodeURIComponent(key)}`, {
+            const presigned = await fetch(`${BACKEND}/image-url/${encodeURIComponent(key)}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const { url } = await urlRes.json();
+            const { url } = await presigned.json();
 
-            // --- IMAGE CARD ---
             const card = document.createElement("div");
             card.className = "img-card";
 
@@ -84,7 +85,7 @@ document.addEventListener("DOMContentLoaded", () => {
     registerForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const formData = new FormData(registerForm);
-        const res = await fetch(`${API}/register`, {
+        const res = await fetch(`${BACKEND}/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -100,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const formData = new FormData(loginForm);
-        const res = await fetch(`${API}/login`, {
+        const res = await fetch(`${BACKEND}/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -109,6 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
             })
         });
         const data = await res.json();
+
         if (data.token) {
             localStorage.setItem("token", data.token);
             const payload = JSON.parse(atob(data.token.split(".")[1]));
@@ -119,28 +121,39 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- UPLOAD ---
+    // --- UPLOAD FILE TO LAMBDA ---
     uploadBtn.addEventListener("click", async () => {
         const file = fileInput.files[0];
         if (!file) return alert("Choisis un fichier !");
-        const formData = new FormData();
-        formData.append("image", file);
 
-        uploadStatus.textContent = "Uploading...";
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${API}/upload`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData
-        });
-        const data = await res.json();
-        uploadStatus.textContent = data.message || data.error;
-        loadImages();
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const base64 = reader.result.split(",")[1]; // on prend uniquement le contenu base64
+            const token = localStorage.getItem("token");
+
+            const res = await fetch(`${BACKEND}/upload`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    filename: file.name,
+                    file: base64
+                })
+            });
+
+            const data = await res.json();
+            uploadStatus.textContent = data.message || data.error;
+            loadImages();
+        };
+        reader.readAsDataURL(file);
     });
 
+    // --- LOGOUT BUTTON ---
     document.getElementById("logout").addEventListener("click", logout);
 
-    // --- INIT ---
+    // --- INIT IF TOKEN EXISTS ---
     const token = localStorage.getItem("token");
     if (token) {
         const payload = JSON.parse(atob(token.split(".")[1]));

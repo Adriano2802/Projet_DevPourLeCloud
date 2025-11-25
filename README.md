@@ -15,9 +15,46 @@ awslocal dynamodb list-tables
 lancer server node :
 node server.js
 
-3pwl4hanxn
-
-http://localhost:4566/restapis/3pwl4hanxn/dev/_user_request_/register
 
 
-curl -X POST http://localhost:4566/restapis/3pwl4hanxn/dev/_user_request_/register -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"secret"}'
+
+-----
+docker-compose up 
+
+cd .\infra\
+tofu init
+tofu apply -auto-approve
+
+cd .\frontend\
+npx serve
+
+
+#### Pour lancer l'appli
+
+docker-compose up -d
+
+awslocal s3 ls
+awslocal dynamodb list-tables
+awslocal lambda list-functions
+
+# pour créer la table DynamoDB
+awslocal dynamodb create-table \
+--table-name users \
+--attribute-definitions AttributeName=email,AttributeType=S \
+--key-schema AttributeName=email,KeyType=HASH \
+--billing-mode PAY_PER_REQUEST
+
+# pour créer le bucket S3
+awslocal s3 mb s3://userimages
+
+# pour créer la queue SQS
+awslocal sqs create-queue --queue-name thumbnail-queue
+
+cd backend
+npm install
+node server.js
+
+cd frontend
+python -m http.server 8080
+
+http://localhost:8080
