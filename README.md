@@ -15,4 +15,9 @@ awslocal dynamodb list-tables
 lancer server node :
 node server.js
 
-docker exec -it localstack awslocal dynamodb create-table --table-name users --attribute-definitions AttributeName=email,AttributeType=S --key-schema AttributeName=email,KeyType=HASH --billing-mode PAY_PER_REQUEST
+3pwl4hanxn
+
+http://localhost:4566/restapis/3pwl4hanxn/dev/_user_request_/register
+
+
+curl -X POST http://localhost:4566/restapis/3pwl4hanxn/dev/_user_request_/register -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"secret"}'
