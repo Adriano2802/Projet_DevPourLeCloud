@@ -1,5 +1,6 @@
 // backend/server.js
 import express from "express";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3"; // ⚠️ ajoute en haut avec les autres imports
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import {
@@ -147,6 +148,33 @@ app.get("/image-url/:key", auth, async (req, res) => {
     const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
     res.json({ url });
 });
+// ---------------- DELETE IMAGE ----------------
+
+
+app.delete("/delete", auth, async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ error: "URL requise" });
+
+        // extraire la clé depuis l’URL presignée
+        const u = new URL(url);
+        const key = decodeURIComponent(u.pathname.split("/").slice(2).join("/"));
+        // slice(2) car l’URL est du type /userimages/<clé>
+
+        console.log("Suppression demandée pour la clé:", key);
+
+        await s3.send(new DeleteObjectCommand({
+            Bucket: BUCKET,
+            Key: key
+        }));
+
+        res.json({ success: true, message: "Image supprimée" });
+    } catch (err) {
+        console.error("Erreur suppression S3:", err);
+        res.status(500).json({ error: "Erreur lors de la suppression" });
+    }
+});
+
 
 // ---------------- START ----------------
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));

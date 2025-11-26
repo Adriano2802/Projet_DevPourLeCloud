@@ -84,17 +84,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     deleteBtn.addEventListener("click", async () => {
                         try {
-                            const res = await fetch(`${BACKEND}/delete/${encodeURIComponent(key)}`, {
+                            // utiliser l'URL comme identifiant
+                            const res = await fetch(`${BACKEND}/delete`, {
                                 method: "DELETE",
-                                headers: { Authorization: `Bearer ${token}` }
+                                headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({ url }) // 👈 on envoie l'URL presignée
                             });
                             const data = await res.json();
-                            if (data.message) loadImages();
-                            else alert("Erreur lors de la suppression");
-                        } catch {
+                            console.log("Réponse suppression:", data);
+                            if (data.success || data.message) {
+                                loadImages();
+                            } else {
+                                alert("Erreur lors de la suppression");
+                            }
+                        } catch (err) {
                             alert("Erreur serveur");
                         }
                     });
+
 
                     body.appendChild(downloadBtn);
                     body.appendChild(deleteBtn);
