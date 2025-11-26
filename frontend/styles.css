@@ -20,7 +20,7 @@ body {
 
 /* Utility Classes */
 .text-accent {
-    color: var(--accent-color);
+    color:  var(--primary-color);
 }
 
 /* Navigation */
@@ -782,4 +782,16 @@ body {
 #user-email {
     color: #fff;       /* texte blanc */
     font-weight: bold; /* texte en gras */
+}
+.fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.8s forwards;
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
