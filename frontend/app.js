@@ -256,12 +256,21 @@ document.addEventListener("DOMContentLoaded", () => {
                         showAlert(container, errorMsg, "danger");
                     }
                 } else {
-                    showAlert(container, data.message || "Inscription réussie", "success");
+                    // Message de succès personnalisé
+                    container.innerHTML = `
+                    <div class="alert alert-success mt-3" role="alert">
+                        Utilisateur créé avec succès. Connectez‑vous pour continuer.
+                        <div class="mt-2">
+                            <a href="login.html" class="btn btn-primary btn-sm">Se connecter</a>
+                        </div>
+                    </div>
+                `;
                 }
             } catch {
                 showAlert(container, "Erreur serveur", "danger");
             }
         });
     }
+
 
 });
