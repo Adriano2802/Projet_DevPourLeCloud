@@ -17,10 +17,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function showAlert(container, message, type = "danger") {
         container.innerHTML = `
-      <div class="alert alert-${type} mt-3" role="alert">
-        ${message}
-      </div>
-    `;
+          <div class="alert alert-${type} mt-3" role="alert">
+            ${message}
+          </div>
+        `;
     }
 
     // --- DASHBOARD PAGE ---
@@ -49,7 +49,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 for (const obj of images) {
                     const key = obj.Key;
-                    const presigned = await fetch(`${BACKEND}/image-url/${encodeURIComponent(key)}`, {
+
+                    // Récupère le thumbnail si existant
+                    const presigned = await fetch(`${BACKEND}/image-url/${encodeURIComponent(key)}?thumb=true`, {
                         headers: { Authorization: `Bearer ${token}` }
                     });
                     const { url } = await presigned.json();
@@ -61,13 +63,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     card.className = "card shadow";
 
                     const img = document.createElement("img");
-                    img.src = url;
+                    img.src = url; // thumbnail si disponible
                     img.alt = key;
                     img.className = "card-img-top";
 
                     const body = document.createElement("div");
                     body.className = "card-body text-center";
-
 
                     // Bouton download orange
                     const downloadBtn = document.createElement("a");
@@ -82,23 +83,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     deleteBtn.textContent = "Supprimer";
 
                     deleteBtn.addEventListener("click", async () => {
-                        const token = localStorage.getItem("token");
                         try {
                             const res = await fetch(`${BACKEND}/delete/${encodeURIComponent(key)}`, {
                                 method: "DELETE",
                                 headers: { Authorization: `Bearer ${token}` }
                             });
                             const data = await res.json();
-                            if (data.message) {
-                                loadImages(); // recharge la liste
-                            } else {
-                                alert("Erreur lors de la suppression");
-                            }
-                        } catch (err) {
+                            if (data.message) loadImages();
+                            else alert("Erreur lors de la suppression");
+                        } catch {
                             alert("Erreur serveur");
                         }
                     });
-
 
                     body.appendChild(downloadBtn);
                     body.appendChild(deleteBtn);
@@ -107,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     col.appendChild(card);
                     imagesList.appendChild(col);
                 }
-            } catch (err) {
+            } catch {
                 showAlert(uploadStatus, "Erreur lors du chargement des images", "danger");
             }
         }
@@ -115,6 +111,8 @@ document.addEventListener("DOMContentLoaded", () => {
         uploadBtn.addEventListener("click", async () => {
             const file = fileInput.files[0];
             if (!file) return alert("Choisis un fichier !");
+
+            uploadStatus.innerHTML = `<div class="alert alert-info mt-3">Téléversement en cours...</div>`;
 
             const reader = new FileReader();
             reader.onload = async () => {
@@ -130,16 +128,15 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                         body: JSON.stringify({ filename: file.name, file: base64 })
                     });
-
                     const data = await res.json();
                     if (!data.error) {
-                        showAlert(uploadStatus, "Image chargée avec succès", "success");
+                        showAlert(uploadStatus, "Image chargée avec succès ! Traitement du thumbnail en cours...", "success");
+                        // On attend 1-2s pour que le thumbnail soit généré par SQS/Lambda
+                        setTimeout(loadImages, 2000);
                     } else {
                         showAlert(uploadStatus, data.error, "danger");
                     }
-
-                    loadImages();
-                } catch (err) {
+                } catch {
                     showAlert(uploadStatus, "Erreur lors du téléversement", "danger");
                 }
             };
@@ -149,9 +146,8 @@ document.addEventListener("DOMContentLoaded", () => {
         logoutBtn.addEventListener("click", logout);
 
         const token = localStorage.getItem("token");
-        if (!token) {
-            location.href = "login.html";
-        } else {
+        if (!token) location.href = "login.html";
+        else {
             const payload = JSON.parse(atob(token.split(".")[1]));
             showUserPanel(payload.user);
             loadImages();
@@ -177,34 +173,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     })
                 });
                 const data = await res.json();
-
                 if (data.token) {
                     localStorage.setItem("token", data.token);
                     location.href = "dashboard.html";
                 } else if (data.error) {
-                    let errorMsg = data.error;
-
-                    // Remplacer le message "Invalid credentials" par un texte personnalisé
-                    if (errorMsg.toLowerCase().includes("invalid credentials")) {
-                        errorMsg = "Utilisateur inexistant ou mot de passe incorrect";
-                    }
-
-                    if (
-                        errorMsg.toLowerCase().includes("not found") ||
-                        errorMsg.toLowerCase().includes("n'existe") ||
-                        errorMsg.toLowerCase().includes("utilisateur inexistant")
-                    ) {
-                        container.innerHTML = `
-            <div class="alert alert-danger mt-3" role="alert">
-                ${errorMsg}
-                <div class="mt-2">
-                    <a href="register.html" class="btn btn-primary btn-sm">S'inscrire</a>
-                </div>
-            </div>
-        `;
-                    } else {
-                        showAlert(container, errorMsg || "Échec de la connexion", "danger");
-                    }
+                    showAlert(container, data.error || "Échec de la connexion", "danger");
                 }
             } catch {
                 showAlert(container, "Erreur serveur", "danger");
@@ -231,46 +204,20 @@ document.addEventListener("DOMContentLoaded", () => {
                     })
                 });
                 const data = await res.json();
-
-                if (data.error) {
-                    let errorMsg = data.error;
-
-                    // Remplacer le message "User already exist" par un texte personnalisé
-                    if (errorMsg.toLowerCase().includes("already") || errorMsg.toLowerCase().includes("existe")) {
-                        errorMsg = "Cet utilisateur existe déjà";
-                    }
-
-                    if (
-                        errorMsg.toLowerCase().includes("existe") ||
-                        errorMsg.toLowerCase().includes("already")
-                    ) {
-                        container.innerHTML = `
-                        <div class="alert alert-danger mt-3" role="alert">
-                            ${errorMsg}
+                if (data.error) showAlert(container, data.error, "danger");
+                else {
+                    container.innerHTML = `
+                        <div class="alert alert-success mt-3" role="alert">
+                            Utilisateur créé avec succès. Connectez‑vous pour continuer.
                             <div class="mt-2">
                                 <a href="login.html" class="btn btn-primary btn-sm">Se connecter</a>
                             </div>
                         </div>
                     `;
-                    } else {
-                        showAlert(container, errorMsg, "danger");
-                    }
-                } else {
-                    // Message de succès personnalisé
-                    container.innerHTML = `
-                    <div class="alert alert-success mt-3" role="alert">
-                        Utilisateur créé avec succès. Connectez‑vous pour continuer.
-                        <div class="mt-2">
-                            <a href="login.html" class="btn btn-primary btn-sm">Se connecter</a>
-                        </div>
-                    </div>
-                `;
                 }
             } catch {
                 showAlert(container, "Erreur serveur", "danger");
             }
         });
     }
-
-
 });

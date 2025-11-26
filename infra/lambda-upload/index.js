@@ -1,5 +1,6 @@
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
+const { v4: uuidv4 } = require("uuid");
 
 const s3 = new S3Client({
     region: "us-east-1",
@@ -14,37 +15,39 @@ const sqs = new SQSClient({
 
 exports.handler = async (event) => {
     try {
-        // Assure-toi que event.body est bien une string JSON
         const body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+        const { filename, content, userId } = body;
 
-        const { filename, content } = body; // 'content' correspond à ton payload base64
-
-        if (!filename || !content) {
+        if (!filename || !content || !userId) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: "filename + content (base64) required" })
+                body: JSON.stringify({ error: "filename + content + userId required" })
             };
         }
 
-        const key = `uploads/${Date.now()}-${filename}`;
+        const uniqueFilename = `${uuidv4()}-${filename}`;
+
+        // ❌ Mauvais : userimages/userID/file
+        // const key = `userimages/${userId}/${uniqueFilename}`;
+
+        // ✅ Correct :
+        const key = `${userId}/${uniqueFilename}`;
+
         const buffer = Buffer.from(content, "base64");
 
         // Upload vers S3
-        await s3.send(
-            new PutObjectCommand({
-                Bucket: process.env.BUCKET,
-                Key: key,
-                Body: buffer
-            })
-        );
+        await s3.send(new PutObjectCommand({
+            Bucket: process.env.BUCKET,
+            Key: key,
+            Body: buffer,
+            ContentType: "image/jpeg"
+        }));
 
         // Envoi du message à SQS
-        await sqs.send(
-            new SendMessageCommand({
-                QueueUrl: process.env.QUEUE_URL,
-                MessageBody: JSON.stringify({ key })
-            })
-        );
+        await sqs.send(new SendMessageCommand({
+            QueueUrl: process.env.QUEUE_URL,
+            MessageBody: JSON.stringify({ bucket: process.env.BUCKET, key })
+        }));
 
         return {
             statusCode: 200,
