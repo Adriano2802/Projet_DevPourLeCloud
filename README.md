@@ -29,7 +29,7 @@ cd .\frontend\
 npx serve
 
 
-#### Pour lancer l'appli
+# Pour lancer l'appli
 
 docker-compose up -d
 
@@ -37,17 +37,13 @@ awslocal s3 ls
 awslocal dynamodb list-tables
 awslocal lambda list-functions
 
-# pour créer la table DynamoDB
-awslocal dynamodb create-table \
---table-name users \
---attribute-definitions AttributeName=email,AttributeType=S \
---key-schema AttributeName=email,KeyType=HASH \
---billing-mode PAY_PER_REQUEST
+## pour créer la table DynamoDB
+awslocal dynamodb create-table --table-name users --attribute-definitions AttributeName=email,AttributeType=S --key-schema AttributeName=email,KeyType=HASH --billing-mode PAY_PER_REQUEST
 
-# pour créer le bucket S3
+## pour créer le bucket S3
 awslocal s3 mb s3://userimages
 
-# pour créer la queue SQS
+## pour créer la queue SQS
 awslocal sqs create-queue --queue-name thumbnail-queue
 
 cd backend
