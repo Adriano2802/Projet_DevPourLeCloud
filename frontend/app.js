@@ -1,7 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
     const BACKEND = "http://localhost:3000";
-
-    // --- DETECT PAGE ---
     const page = document.body.dataset.page;
 
     // --- COMMON FUNCTIONS ---
@@ -17,9 +15,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (userEmailSpan) userEmailSpan.textContent = email;
     }
 
+    function showAlert(container, message, type = "danger") {
+        container.innerHTML = `
+      <div class="alert alert-${type} mt-3" role="alert">
+        ${message}
+      </div>
+    `;
+    }
+
     // --- DASHBOARD PAGE ---
     if (page === "dashboard") {
-        const dashboard = document.getElementById("dashboard");
         const imagesList = document.getElementById("images-list");
         const fileInput = document.getElementById("file-input");
         const uploadBtn = document.getElementById("upload-btn");
@@ -36,32 +41,74 @@ document.addEventListener("DOMContentLoaded", () => {
             const token = localStorage.getItem("token");
             if (!token) return;
 
-            const res = await fetch(`${BACKEND}/images`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const images = await res.json();
-
-            for (const obj of images) {
-                const key = obj.Key;
-                const presigned = await fetch(`${BACKEND}/image-url/${encodeURIComponent(key)}`, {
+            try {
+                const res = await fetch(`${BACKEND}/images`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                const { url } = await presigned.json();
+                const images = await res.json();
 
-                const card = document.createElement("div");
-                card.className = "img-card";
+                for (const obj of images) {
+                    const key = obj.Key;
+                    const presigned = await fetch(`${BACKEND}/image-url/${encodeURIComponent(key)}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const { url } = await presigned.json();
 
-                const img = document.createElement("img");
-                img.src = url;
-                img.alt = key;
+                    const col = document.createElement("div");
+                    col.className = "col-md-4";
 
-                const name = document.createElement("p");
-                name.className = "img-name";
-                name.textContent = key;
+                    const card = document.createElement("div");
+                    card.className = "card shadow";
 
-                card.appendChild(img);
-                card.appendChild(name);
-                imagesList.appendChild(card);
+                    const img = document.createElement("img");
+                    img.src = url;
+                    img.alt = key;
+                    img.className = "card-img-top";
+
+                    const body = document.createElement("div");
+                    body.className = "card-body text-center";
+
+
+                    // Bouton download orange
+                    const downloadBtn = document.createElement("a");
+                    downloadBtn.href = url;
+                    downloadBtn.download = key;
+                    downloadBtn.className = "btn btn-primary-color btn-sm mt-2";
+                    downloadBtn.textContent = "Télécharger";
+
+                    // Bouton supprimer orange
+                    const deleteBtn = document.createElement("button");
+                    deleteBtn.className = "btn btn-primary-color btn-sm mt-2 ms-2";
+                    deleteBtn.textContent = "Supprimer";
+
+                    deleteBtn.addEventListener("click", async () => {
+                        const token = localStorage.getItem("token");
+                        try {
+                            const res = await fetch(`${BACKEND}/delete/${encodeURIComponent(key)}`, {
+                                method: "DELETE",
+                                headers: { Authorization: `Bearer ${token}` }
+                            });
+                            const data = await res.json();
+                            if (data.message) {
+                                loadImages(); // recharge la liste
+                            } else {
+                                alert("Erreur lors de la suppression");
+                            }
+                        } catch (err) {
+                            alert("Erreur serveur");
+                        }
+                    });
+
+
+                    body.appendChild(downloadBtn);
+                    body.appendChild(deleteBtn);
+                    card.appendChild(img);
+                    card.appendChild(body);
+                    col.appendChild(card);
+                    imagesList.appendChild(col);
+                }
+            } catch (err) {
+                showAlert(uploadStatus, "Erreur lors du chargement des images", "danger");
             }
         }
 
@@ -74,25 +121,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 const base64 = reader.result.split(",")[1];
                 const token = localStorage.getItem("token");
 
-                const res = await fetch(`${BACKEND}/upload`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ filename: file.name, file: base64 })
-                });
+                try {
+                    const res = await fetch(`${BACKEND}/upload`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ filename: file.name, file: base64 })
+                    });
 
-                const data = await res.json();
-                uploadStatus.textContent = data.message || data.error;
-                loadImages();
+                    const data = await res.json();
+                    if (!data.error) {
+                        showAlert(uploadStatus, "Image chargée avec succès", "success");
+                    } else {
+                        showAlert(uploadStatus, data.error, "danger");
+                    }
+
+                    loadImages();
+                } catch (err) {
+                    showAlert(uploadStatus, "Erreur lors du téléversement", "danger");
+                }
             };
             reader.readAsDataURL(file);
         });
 
         logoutBtn.addEventListener("click", logout);
 
-        // --- INIT ---
         const token = localStorage.getItem("token");
         if (!token) {
             location.href = "login.html";
@@ -107,23 +162,52 @@ document.addEventListener("DOMContentLoaded", () => {
     if (page === "login") {
         redirectIfLoggedIn();
         const loginForm = document.getElementById("login-form");
+        const container = loginForm.parentElement;
+
         loginForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             const formData = new FormData(loginForm);
-            const res = await fetch(`${BACKEND}/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    email: formData.get("email"),
-                    password: formData.get("password")
-                })
-            });
-            const data = await res.json();
-            if (data.token) {
-                localStorage.setItem("token", data.token);
-                location.href = "dashboard.html";
-            } else {
-                alert("Login failed");
+            try {
+                const res = await fetch(`${BACKEND}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: formData.get("email"),
+                        password: formData.get("password")
+                    })
+                });
+                const data = await res.json();
+
+                if (data.token) {
+                    localStorage.setItem("token", data.token);
+                    location.href = "dashboard.html";
+                } else if (data.error) {
+                    let errorMsg = data.error;
+
+                    // Remplacer le message "Invalid credentials" par un texte personnalisé
+                    if (errorMsg.toLowerCase().includes("invalid credentials")) {
+                        errorMsg = "Utilisateur inexistant ou mot de passe incorrect";
+                    }
+
+                    if (
+                        errorMsg.toLowerCase().includes("not found") ||
+                        errorMsg.toLowerCase().includes("n'existe") ||
+                        errorMsg.toLowerCase().includes("utilisateur inexistant")
+                    ) {
+                        container.innerHTML = `
+            <div class="alert alert-danger mt-3" role="alert">
+                ${errorMsg}
+                <div class="mt-2">
+                    <a href="register.html" class="btn btn-primary btn-sm">S'inscrire</a>
+                </div>
+            </div>
+        `;
+                    } else {
+                        showAlert(container, errorMsg || "Échec de la connexion", "danger");
+                    }
+                }
+            } catch {
+                showAlert(container, "Erreur serveur", "danger");
             }
         });
     }
@@ -132,19 +216,52 @@ document.addEventListener("DOMContentLoaded", () => {
     if (page === "register") {
         redirectIfLoggedIn();
         const registerForm = document.getElementById("register-form");
+        const container = registerForm.parentElement;
+
         registerForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             const formData = new FormData(registerForm);
-            const res = await fetch(`${BACKEND}/register`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    email: formData.get("email"),
-                    password: formData.get("password")
-                })
-            });
-            const data = await res.json();
-            alert(data.message || data.error);
+            try {
+                const res = await fetch(`${BACKEND}/register`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: formData.get("email"),
+                        password: formData.get("password")
+                    })
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    let errorMsg = data.error;
+
+                    // Remplacer le message "User already exist" par un texte personnalisé
+                    if (errorMsg.toLowerCase().includes("already") || errorMsg.toLowerCase().includes("existe")) {
+                        errorMsg = "Cet utilisateur existe déjà";
+                    }
+
+                    if (
+                        errorMsg.toLowerCase().includes("existe") ||
+                        errorMsg.toLowerCase().includes("already")
+                    ) {
+                        container.innerHTML = `
+                        <div class="alert alert-danger mt-3" role="alert">
+                            ${errorMsg}
+                            <div class="mt-2">
+                                <a href="login.html" class="btn btn-primary btn-sm">Se connecter</a>
+                            </div>
+                        </div>
+                    `;
+                    } else {
+                        showAlert(container, errorMsg, "danger");
+                    }
+                } else {
+                    showAlert(container, data.message || "Inscription réussie", "success");
+                }
+            } catch {
+                showAlert(container, "Erreur serveur", "danger");
+            }
         });
     }
+
 });

@@ -4,24 +4,42 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Image Manager — Accueil</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<main class="app">
-    <header>
-        <h1>Image Manager</h1>
-    </header>
+<!-- Navigation -->
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <div class="container">
+        <a class="navbar-brand" href="index.html">
+            <i class="bi bi-images"></i> Image<span class="text-accent">Manager</span>
+        </a>
+    </div>
+</nav>
 
-    <section class="card">
-        <h2>Bienvenue</h2>
-        <button onclick="location.href='register.html'">S'inscrire</button>
-        <button onclick="location.href='login.html'">Se connecter</button>
-    </section>
+<!-- Hero -->
+<header class="hero text-center">
+    <div class="container">
+        <h1 class="display-4 fw-bold">Bienvenue sur Image Manager</h1>
+        <p class="lead my-4">Gérez vos images en toute simplicité</p>
+        <div>
+            <a href="register.html" class="btn btn-primary btn-lg me-2">S'inscrire</a>
+            <a href="login.html" class="btn btn-outline-light btn-lg">Se connecter</a>
+        </div>
+    </div>
+    <div class="hero-shape"></div>
+</header>
 
-    <footer>
-        <small>Dev local — LocalStack / OpenTofu</small>
-    </footer>
-</main>
+<!-- Footer -->
+<footer class="footer footer-fixed py-4">
+    <div class="container text-center">
+        <small>Une plateforme conçue et développée par Walid, Adriano et Aymane</small>
+    </div>
+</footer>
+
+
 <script src="app.js" type="module"></script>
+<script src="template.js"></script>
 </body>
 </html>
