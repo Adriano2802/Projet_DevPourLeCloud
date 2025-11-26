@@ -54,3 +54,7 @@ cd frontend
 python -m http.server 8080
 
 http://localhost:8080
+
+
+$bytes = [System.IO.File]::ReadAllBytes("C::\PROJETDEVCLOUD\Projet_DevPourLeCloud\backend\test.jpg")
+$base64 = [System.Convert]::ToBase64String($bytes)

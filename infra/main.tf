@@ -146,7 +146,6 @@ resource "aws_iam_role_policy" "lambda_full_access" {
 # LAMBDA FUNCTIONS
 #########################################################
 
-# REGISTER
 resource "aws_lambda_function" "register_function" {
   function_name = "register-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -163,7 +162,6 @@ resource "aws_lambda_function" "register_function" {
   }
 }
 
-# LOGIN
 resource "aws_lambda_function" "login_function" {
   function_name = "login-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -180,7 +178,6 @@ resource "aws_lambda_function" "login_function" {
   }
 }
 
-# THUMBNAIL WORKER
 resource "aws_lambda_function" "thumbnail_function" {
   function_name = "thumbnail-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -190,7 +187,6 @@ resource "aws_lambda_function" "thumbnail_function" {
   source_code_hash = filebase64sha256("${path.module}/lambda-thumbnail.zip")
 }
 
-# UPLOAD
 resource "aws_lambda_function" "upload_function" {
   function_name = "upload-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -201,13 +197,12 @@ resource "aws_lambda_function" "upload_function" {
 
   environment {
     variables = {
-      BUCKET = "userimages"
-      QUEUE_URL = aws_sqs_queue.thumbnail_queue.id
+      BUCKET    = "userimages"
+      QUEUE_URL = aws_sqs_queue.thumbnail_queue.url
     }
   }
 }
 
-# LIST IMAGES
 resource "aws_lambda_function" "list_images_function" {
   function_name = "list-images-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -223,7 +218,6 @@ resource "aws_lambda_function" "list_images_function" {
   }
 }
 
-# PRESIGNED URL
 resource "aws_lambda_function" "presign_url_function" {
   function_name = "presign-url-function"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -247,7 +241,7 @@ resource "aws_api_gateway_rest_api" "api" {
   name = "thumbnail_api"
 }
 
-### REGISTER
+# REGISTER
 resource "aws_api_gateway_resource" "register" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
@@ -270,7 +264,7 @@ resource "aws_api_gateway_integration" "register_integration" {
   uri                     = aws_lambda_function.register_function.invoke_arn
 }
 
-### LOGIN
+# LOGIN
 resource "aws_api_gateway_resource" "login" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
@@ -293,7 +287,7 @@ resource "aws_api_gateway_integration" "login_integration" {
   uri                     = aws_lambda_function.login_function.invoke_arn
 }
 
-### UPLOAD
+# UPLOAD
 resource "aws_api_gateway_resource" "upload" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
@@ -316,7 +310,7 @@ resource "aws_api_gateway_integration" "upload_integration" {
   uri                     = aws_lambda_function.upload_function.invoke_arn
 }
 
-### LIST IMAGES
+# LIST IMAGES
 resource "aws_api_gateway_resource" "images" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
@@ -339,14 +333,13 @@ resource "aws_api_gateway_integration" "images_integration" {
   uri                     = aws_lambda_function.list_images_function.invoke_arn
 }
 
-### PRESIGNED URL
+# PRESIGNED URL
 resource "aws_api_gateway_resource" "image_url" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
   path_part   = "image-url"
 }
 
-# /image-url/{key}
 resource "aws_api_gateway_resource" "image_url_key" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_resource.image_url.id
@@ -447,5 +440,5 @@ resource "aws_api_gateway_deployment" "deployment" {
 #########################################################
 
 output "api_base_url" {
-  value = "http://localhost:4566/restapis/${aws_api_gateway_rest_api.api.id}/dev/_user_request_"
+  value = "http://localhost:4566/restapis/${aws_api_gateway_rest_api.api.id}/dev/_user_request_/"
 }
