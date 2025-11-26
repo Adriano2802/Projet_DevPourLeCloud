@@ -780,8 +780,8 @@ body {
 }
 
 #user-email {
-    color: #fff;       /* texte blanc */
-    font-weight: bold; /* texte en gras */
+    color       : #fff;       /* texte blanc */
+    font-weight : bold; /* texte en gras */
 }
 .fade-in {
     opacity: 0;
@@ -795,3 +795,41 @@ body {
         transform: translateY(0);
     }
 }
+
+
+/* ----------------- Toast Notification au-dessus du formulaire ----------------- */
+#toast {
+    display: none;
+    position: absolute; /* flottant au-dessus du formulaire */
+    top: 0; /* juste au-dessus du H1 */
+    left: 50%;
+    transform: translateX(-50%) translateY(-50px); /* départ au-dessus */
+    background: #dc3545; /* rouge */
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    opacity: 0;
+    z-index: 10;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Shake */
+@keyframes shake {
+  0% { transform: translateX(-50%) translateY(-50px); }
+  20% { transform: translateX(calc(-50% - 5px)) translateY(-50px); }
+  40% { transform: translateX(calc(-50% + 5px)) translateY(-50px); }
+  60% { transform: translateX(calc(-50% - 3px)) translateY(-50px); }
+  80% { transform: translateX(calc(-50% + 3px)) translateY(-50px); }
+  100% { transform: translateX(-50%) translateY(-50px); }
+}
+
+#toast.show {
+    display: block;
+    opacity: 1;
+    animation: shake 0.5s;
+}
+
+
+
