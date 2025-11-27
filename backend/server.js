@@ -1,6 +1,6 @@
 // backend/server.js
 import express from "express";
-import multer from "multer";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3"; // ⚠️ ajoute en haut avec les autres imports
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import {
@@ -20,60 +20,41 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
-
-
-
-    // ---------------- CONFIG ----------------
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+// ---------------- CONFIG ----------------
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const BUCKET = process.env.USER_IMAGES_BUCKET || "userimages";
 const JWT_SECRET = process.env.JWT_SECRET || "MY_SECRET";
 const THUMBNAIL_QUEUE_NAME = process.env.THUMBNAIL_QUEUE_NAME || "thumbnail-queue";
 const LOCALSTACK_ENDPOINT = process.env.LOCALSTACK_ENDPOINT || "http://localhost:4566";
-
 const SALT_ROUNDS = 10;
 
 // Middleware JSON
-app.use(express.json());
-
-// enable CORS (dev)
+app.use(express.json({ limit: "10mb" })); // support base64 uploads
 app.use(cors());
 
-// servir les fichiers statiques du front (optionnel, pratique)
+// servir les fichiers statiques du front
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use(express.static(path.resolve(__dirname, "../frontend")));
 
-
-// ---------------- S3 & SQS (LocalStack) ----------------
-const s3 = new S3Client({
-    region: "us-east-1",
-    endpoint: LOCALSTACK_ENDPOINT,
-    forcePathStyle: true,
-});
-
-const sqs = new SQSClient({
-    region: "us-east-1",
-    endpoint: LOCALSTACK_ENDPOINT,
-});
+// ---------------- S3 & SQS ----------------
+const s3 = new S3Client({ region: "us-east-1", endpoint: LOCALSTACK_ENDPOINT, forcePathStyle: true });
+const sqs = new SQSClient({ region: "us-east-1", endpoint: LOCALSTACK_ENDPOINT });
 
 let thumbnailQueueUrl = process.env.THUMBNAIL_QUEUE_URL || null;
-
 async function initQueueUrl() {
     if (thumbnailQueueUrl) return;
     try {
         const r = await sqs.send(new GetQueueUrlCommand({ QueueName: THUMBNAIL_QUEUE_NAME }));
         thumbnailQueueUrl = r.QueueUrl;
-        console.log("SQS queue URL found:", thumbnailQueueUrl);
-    } catch (err) {
-        console.warn("⚠ Queue not yet created (no big deal in dev)");
+    } catch {
+        console.warn("⚠ Queue not yet created (dev only)");
     }
 }
 initQueueUrl();
 
-// ---------------- AUTH MIDDLEWARE ----------------
+// ---------------- AUTH ----------------
 function auth(req, res, next) {
     const header = req.headers.authorization;
     if (!header) return res.status(401).json({ error: "Missing token" });
@@ -91,145 +72,109 @@ function auth(req, res, next) {
 function isValidEmail(email) {
     return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
-
 function isStrongPassword(pwd) {
     return typeof pwd === "string" && pwd.length >= 8;
 }
 
 // ---------------- REGISTER ----------------
-app.post("/register", async (req, res, next) => {
-    try {
-        const { email, password } = req.body;
+app.post("/register", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email format" });
+    if (!isStrongPassword(password)) return res.status(400).json({ error: "Weak password (>=8 chars)" });
 
-        if (!email || !password) return res.status(400).json({ error: "Email and password required" });
-        if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email format" });
-        if (!isStrongPassword(password)) return res.status(400).json({ error: "Weak password (>=8 chars)" });
+    const existingUser = await getUser(email);
+    if (existingUser) return res.status(400).json({ error: "User already exists" });
 
-        const existingUser = await getUser(email);
-        if (existingUser) return res.status(400).json({ error: "User already exists" });
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    await createUser({ email, passwordHash, createdAt: new Date().toISOString() });
 
-        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-        await createUser({ email, passwordHash, createdAt: new Date().toISOString() });
-
-        console.log(`✔ User created: ${email}`);
-
-        res.status(201).json({ message: "User created" });
-    } catch (err) {
-        next(err);
-    }
+    res.status(201).json({ message: "User created" });
 });
 
 // ---------------- LOGIN ----------------
-app.post("/login", async (req, res, next) => {
-    try {
-        const { email, password } = req.body;
+app.post("/login", async (req, res) => {
+    const { email, password } = req.body;
+    const user = await getUser(email);
+    if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
-        const user = await getUser(email);
-        if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
-        const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) return res.status(401).json({ error: "Invalid credentials" });
-
-        const token = jwt.sign({ user: email }, JWT_SECRET, { expiresIn: "1h" });
-
-        res.json({ token });
-    } catch (err) {
-        next(err);
-    }
+    const token = jwt.sign({ user: email }, JWT_SECRET, { expiresIn: "1h" });
+    res.json({ token });
 });
 
-// ---------------- SEED USERS (DEV ONLY) ----------------
-app.post("/seed-users", async (req, res) => {
-    const testUsers = [
-        { email: "test1@example.com", password: "password123" },
-        { email: "test2@example.com", password: "password123" }
-    ];
-
-    for (const u of testUsers) {
-        const hash = await bcrypt.hash(u.password, SALT_ROUNDS);
-        await createUser({ email: u.email, passwordHash: hash, createdAt: new Date().toISOString() });
-    }
-
-    res.json({ message: "Users created", count: testUsers.length });
-});
-
-// ---------------- FILE UPLOAD + SQS ----------------
-// (on laisse TA logique, juste petits logs)
-app.post("/upload", auth, upload.single("image"), async (req, res, next) => {
+// ---------------- UPLOAD BASE64 ----------------
+app.post("/upload", auth, async (req, res) => {
     try {
-        const file = req.file;
-        if (!file) return res.status(400).json({ error: "No file uploaded" });
+        const { filename, file } = req.body;
+        if (!filename || !file) return res.status(400).json({ error: "filename + file (base64) required" });
 
-        const key = `${encodeURIComponent(req.user.user)}/${Date.now()}_${file.originalname.replace(/\s+/g, "_")}`;
+        const buffer = Buffer.from(file, "base64");
+        const key = `${encodeURIComponent(req.user.user)}/${Date.now()}_${filename.replace(/\s+/g, "_")}`;
 
-        await s3.send(new PutObjectCommand({
-            Bucket: BUCKET,
-            Key: key,
-            Body: file.buffer,
-            ContentType: file.mimetype,
-        }));
-
-        console.log(`📤 Uploaded to S3: ${key}`);
+        await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: buffer }));
 
         if (!thumbnailQueueUrl) {
             try {
                 const r = await sqs.send(new GetQueueUrlCommand({ QueueName: THUMBNAIL_QUEUE_NAME }));
                 thumbnailQueueUrl = r.QueueUrl;
-            } catch {
-                console.warn("⚠ No queue found, skipping SQS message");
-            }
+            } catch { console.warn("⚠ No queue found"); }
         }
 
         if (thumbnailQueueUrl) {
-            await sqs.send(new SendMessageCommand({
-                QueueUrl: thumbnailQueueUrl,
-                MessageBody: JSON.stringify({ bucket: BUCKET, key }),
-            }));
-            console.log(`📨 SQS message sent for ${key}`);
+            await sqs.send(new SendMessageCommand({ QueueUrl: thumbnailQueueUrl, MessageBody: JSON.stringify({ bucket: BUCKET, key }) }));
         }
 
         res.status(201).json({ message: "File uploaded", key });
     } catch (err) {
-        next(err);
+        console.error(err);
+        res.status(500).json({ error: err.message });
     }
 });
 
 // ---------------- LIST USER IMAGES ----------------
-app.get("/images", auth, async (req, res, next) => {
-    try {
-        const prefix = encodeURIComponent(req.user.user) + "/";
+app.get("/images", auth, async (req, res) => {
+    const prefix = encodeURIComponent(req.user.user) + "/";
+    const objects = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+    res.json(objects.Contents || []);
+});
 
-        const objects = await s3.send(new ListObjectsV2Command({
+// ---------------- SIGNED URL ----------------
+app.get("/image-url/:key", auth, async (req, res) => {
+    const key = req.params.key;
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
+    const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+    res.json({ url });
+});
+// ---------------- DELETE IMAGE ----------------
+
+
+app.delete("/delete", auth, async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ error: "URL requise" });
+
+        // extraire la clé depuis l’URL presignée
+        const u = new URL(url);
+        const key = decodeURIComponent(u.pathname.split("/").slice(2).join("/"));
+        // slice(2) car l’URL est du type /userimages/<clé>
+
+        console.log("Suppression demandée pour la clé:", key);
+
+        await s3.send(new DeleteObjectCommand({
             Bucket: BUCKET,
-            Prefix: prefix
+            Key: key
         }));
 
-        res.json(objects.Contents || []);
+        res.json({ success: true, message: "Image supprimée" });
     } catch (err) {
-        next(err);
+        console.error("Erreur suppression S3:", err);
+        res.status(500).json({ error: "Erreur lors de la suppression" });
     }
 });
 
-// ---------------- SIGNED URL FOR 1 IMAGE ----------------
-app.get("/image-url/:key", auth, async (req, res, next) => {
-    try {
-        const key = req.params.key;
 
-        const command = new GetObjectCommand({
-            Bucket: BUCKET,
-            Key: key,
-        });
-
-        const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
-
-        res.json({ url });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// ---------------- START SERVER ----------------
-app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+// ---------------- START ----------------
+app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));

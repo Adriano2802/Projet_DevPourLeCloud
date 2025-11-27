@@ -5,7 +5,8 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=apigateway,s3,dynamodb,sqs,lambda
+      - SERVICES=lambda,apigateway,sqs,s3,dynamodb,cloudwatch,logs,iam
+      - ENABLE_CLOUDWATCH_LOGS=1
       - DEBUG=1
       - DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
@@ -13,3 +14,10 @@ services:
     volumes:
       - ./localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      localstack_net:
+        aliases:
+          - localstack
+networks:
+  localstack_net:
+    driver: bridge
