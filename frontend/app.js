@@ -163,71 +163,97 @@ document.addEventListener("DOMContentLoaded", () => {
             loadImages();
         }
     }
+// --- LOGIN PAGE ---
+if (page === "login") {
+    redirectIfLoggedIn();
 
-    // --- LOGIN PAGE ---
-    if (page === "login") {
-        redirectIfLoggedIn();
-        const loginForm = document.getElementById("login-form");
-        const container = loginForm.parentElement;
+    const loginForm = document.getElementById("login-form");
 
-        loginForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const formData = new FormData(loginForm);
-            try {
-                const res = await fetch(`${BACKEND}/login`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        email: formData.get("email"),
-                        password: formData.get("password")
-                    })
-                });
-                const data = await res.json();
-                if (data.token) {
-                    localStorage.setItem("token", data.token);
-                    location.href = "dashboard.html";
-                } else if (data.error) {
-                    showAlert(container, data.error || "Échec de la connexion", "danger");
-                }
-            } catch {
-                showAlert(container, "Erreur serveur", "danger");
-            }
-        });
+    // Fonction toast
+    function showToast(message) {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 3000);
     }
+
+    loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(loginForm);
+
+        try {
+            const res = await fetch(`${BACKEND}/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: formData.get("email"),
+                    password: formData.get("password")
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.token) {
+                localStorage.setItem("token", data.token);
+                location.href = "dashboard.html"; // login réussi, redirige
+            } else if (data.error) {
+                // Affiche le toast d'erreur
+                showToast("Email ou mot de passe incorrect");
+            }
+        } catch {
+            showToast("Erreur serveur");
+        }
+    });
+}
+
 
     // --- REGISTER PAGE ---
-    if (page === "register") {
-        redirectIfLoggedIn();
-        const registerForm = document.getElementById("register-form");
-        const container = registerForm.parentElement;
+if (page === "register") {
+    redirectIfLoggedIn();
 
-        registerForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const formData = new FormData(registerForm);
-            try {
-                const res = await fetch(`${BACKEND}/register`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        email: formData.get("email"),
-                        password: formData.get("password")
-                    })
-                });
-                const data = await res.json();
-                if (data.error) showAlert(container, data.error, "danger");
-                else {
-                    container.innerHTML = `
-                        <div class="alert alert-success mt-3" role="alert">
-                            Utilisateur créé avec succès. Connectez‑vous pour continuer.
-                            <div class="mt-2">
-                                <a href="login.html" class="btn btn-primary btn-sm">Se connecter</a>
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch {
-                showAlert(container, "Erreur serveur", "danger");
-            }
-        });
+    const registerForm = document.getElementById("register-form");
+
+    function showToast(message) {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.classList.remove("show");  // réinitialise l'animation si click multiple
+        void toast.offsetWidth;          // trigger reflow pour relancer l'animation
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 3000);
     }
+
+    registerForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(registerForm);
+
+        try {
+            const res = await fetch(`${BACKEND}/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: formData.get("email"),
+                    password: formData.get("password")
+                })
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                let message = "";
+                if (data.error.toLowerCase().includes("user already exists")) {
+                    message = "Cet utilisateur existe déjà";
+                } else {
+                    message = "Erreur : " + data.error;
+                }
+                showToast(message);
+            }
+            else {
+                showToast("Utilisateur créé avec succès !");
+                setTimeout(() => location.href = "login.html", 1000); // redirige après 1s
+            }
+        } catch {
+            showToast("Erreur serveur");
+        }
+    });
+}
+
 });
